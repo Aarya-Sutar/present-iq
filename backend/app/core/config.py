@@ -8,17 +8,20 @@ class Settings(BaseSettings):
     project_name: str = "PresentIQ"
     environment: str = "development"
 
-    database_url: str = "postgresql+psycopg2://presentiq:presentiq@db:5432/presentiq"
-    redis_url: str = "redis://redis:6379/0"
+    database_url: str
+    redis_url: str
 
-    secret_key: str = "change-me"
+    secret_key: str
     access_token_expire_minutes: int = 60 * 24 * 7
 
     api_v1_prefix: str = "/api/v1"
-    backend_cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+
+    backend_cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000"]
+    )
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file="backend/.env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
