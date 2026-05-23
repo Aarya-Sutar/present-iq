@@ -11,6 +11,7 @@ from app.schemas.presentation import PresentationResponse
 from app.schemas.slide import SlideResponse
 from app.services.file_validation import validate_presentation_file
 from app.services.processing.pipeline import process_presentation
+from app.services.processing.queue import queue_presentation_processing
 from app.services.storage import build_storage_filename, save_file_bytes
 
 router = APIRouter(prefix="/presentations", tags=["Presentations"])
@@ -46,6 +47,9 @@ async def upload_presentation(
     db.commit()
     db.refresh(presentation)
 
+    queue_presentation_processing(db, presentation)
+    db.refresh(presentation)
+
     return presentation
 
 
@@ -64,10 +68,7 @@ def list_presentations(
     return presentations
 
 
-@router.post(
-    "/{presentation_id}/extract",
-    response_model=list[SlideResponse],
-)
+@router.post("/{presentation_id}/extract")
 def extract_presentation(
     presentation_id: int,
     db: Session = Depends(get_db),
@@ -78,13 +79,13 @@ def extract_presentation(
     if not presentation or presentation.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Presentation not found")
 
-    try:
-        slides = process_presentation(db, presentation)
-        return slides
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Slide extraction failed: {exc}") from exc
+    queue_presentation_processing(db, presentation)
+
+    return {
+        "message": "Presentation queued for processing",
+        "presentation_id": presentation.id,
+        "status": presentation.processing_status,
+    }
 
 
 @router.get(

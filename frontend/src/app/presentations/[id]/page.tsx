@@ -5,6 +5,17 @@ import { useParams } from "next/navigation";
 
 import api from "@/lib/api";
 
+type FrameworkMatch = {
+  framework: string;
+  score: number;
+  semantic_score: number;
+  keyword_score: number;
+  title_score: number;
+  method: string;
+  evidence: string[];
+  reference_text: string | null;
+};
+
 type Slide = {
   id: number;
   presentation_id: number;
@@ -13,7 +24,14 @@ type Slide = {
   extracted_text: string;
   ocr_text: string;
   image_paths: string[];
-  metadata: Record<string, unknown>;
+  slide_metadata: Record<string, unknown>;
+  slide_category: string | null;
+  classification_confidence: number | null;
+  classification_reason: string | null;
+  primary_framework: string | null;
+  framework_confidence: number | null;
+  framework_reason: string | null;
+  framework_matches: FrameworkMatch[];
   created_at: string;
 };
 
@@ -64,7 +82,7 @@ export default function PresentationSlidesPage() {
                 key={slide.id}
                 className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"
               >
-                <div className="mb-3 flex items-start justify-between gap-4">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <h2 className="text-lg font-medium">
                       Slide {slide.slide_number}
@@ -73,7 +91,53 @@ export default function PresentationSlidesPage() {
                       {slide.slide_title || "Untitled slide"}
                     </p>
                   </div>
+
+                  <div className="rounded-full border border-zinc-700 px-3 py-1 text-xs uppercase tracking-wide text-zinc-300">
+                    {slide.slide_category || "Unclassified"}
+                  </div>
                 </div>
+
+                <div className="mb-4 space-y-2 text-sm text-zinc-400">
+                  <div>
+                    Confidence:{" "}
+                    {slide.classification_confidence !== null
+                      ? `${Math.round(slide.classification_confidence * 100)}%`
+                      : "N/A"}
+                    {slide.classification_reason
+                      ? ` • Reason: ${slide.classification_reason}`
+                      : ""}
+                  </div>
+
+                  <div>
+                    Primary framework:{" "}
+                    {slide.primary_framework || "None detected"}
+                    {slide.framework_confidence !== null
+                      ? ` • ${Math.round(slide.framework_confidence * 100)}%`
+                      : ""}
+                    {slide.framework_reason
+                      ? ` • Reason: ${slide.framework_reason}`
+                      : ""}
+                  </div>
+                </div>
+
+                {slide.framework_matches.length > 0 && (
+                  <div className="mb-4">
+                    <p className="mb-2 font-medium text-white">
+                      Detected Frameworks
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {slide.framework_matches.map((framework) => (
+                        <span
+                          key={framework.framework}
+                          className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-200"
+                        >
+                          {framework.framework} •{" "}
+                          {Math.round(framework.score * 100)}%
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-4 text-sm text-zinc-300">
                   <div>

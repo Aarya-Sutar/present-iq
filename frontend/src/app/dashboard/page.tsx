@@ -32,17 +32,23 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchPresentations();
+
+    const interval = setInterval(() => {
+      fetchPresentations();
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const handleExtract = async (presentationId: number) => {
+  const handleQueue = async (presentationId: number) => {
     try {
       setBusyId(presentationId);
       await api.post(`/presentations/${presentationId}/extract`);
       await fetchPresentations();
-      alert("Extraction completed");
+      alert("Processing queued");
     } catch (error) {
       console.error(error);
-      alert("Extraction failed");
+      alert("Failed to queue processing");
     } finally {
       setBusyId(null);
     }
@@ -55,7 +61,7 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-3xl font-semibold">Dashboard</h1>
             <p className="mt-2 text-sm text-zinc-400">
-              Uploaded presentations and slide extraction status
+              Uploaded presentations and background job status
             </p>
           </div>
 
@@ -98,13 +104,25 @@ export default function DashboardPage() {
 
                   <div className="flex flex-wrap gap-3">
                     <button
-                      onClick={() => handleExtract(presentation.id)}
-                      disabled={busyId === presentation.id}
+                      onClick={() => handleQueue(presentation.id)}
+                      disabled={
+                        busyId === presentation.id ||
+                        presentation.processing_status === "processing" ||
+                        presentation.processing_status === "completed"
+                      }
                       className="rounded-lg border border-zinc-700 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {busyId === presentation.id
-                        ? "Extracting..."
-                        : "Extract Slides"}
+                        ? "Queueing..."
+                        : presentation.processing_status === "uploaded"
+                          ? "Queue Processing"
+                          : presentation.processing_status === "processing"
+                            ? "Processing..."
+                            : presentation.processing_status === "completed"
+                              ? "Completed"
+                              : presentation.processing_status === "failed"
+                                ? "Retry Processing"
+                                : "Queue Processing"}
                     </button>
 
                     <Link

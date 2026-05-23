@@ -1,10 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import api from "@/lib/api";
 
 export default function UploadPage() {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -26,7 +28,7 @@ export default function UploadPage() {
       });
 
       alert("Upload successful");
-      setFile(null);
+      router.push("/dashboard");
     } catch (error) {
       console.error(error);
       alert("Upload failed");
