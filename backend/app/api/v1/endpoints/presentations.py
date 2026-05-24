@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+import json
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,6 +11,7 @@ from app.models.slide import Slide
 from app.models.user import User
 from app.schemas.presentation import PresentationResponse
 from app.schemas.slide import SlideResponse
+from app.services.analysis.contextual import build_evaluation_context
 from app.services.file_validation import validate_presentation_file
 from app.services.processing.pipeline import process_presentation
 from app.services.processing.queue import queue_presentation_processing
@@ -24,9 +27,25 @@ router = APIRouter(prefix="/presentations", tags=["Presentations"])
 )
 async def upload_presentation(
     file: UploadFile = File(...),
+    case_prompt: str = Form(...),
+    evaluation_rubric: str | None = Form(None),
+    domain_type: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    case_prompt = case_prompt.strip()
+    if not case_prompt:
+        raise HTTPException(
+            status_code=400,
+            detail="Case prompt is required",
+        )
+
+    context = build_evaluation_context(
+        case_prompt=case_prompt,
+        explicit_domain_type=domain_type,
+        raw_rubric=evaluation_rubric,
+    )
+
     file_bytes = await file.read()
     file_extension = validate_presentation_file(file.filename, file_bytes)
 
@@ -35,6 +54,9 @@ async def upload_presentation(
 
     presentation = Presentation(
         user_id=current_user.id,
+        case_prompt=context.case_prompt,
+        domain_type=context.domain_type,
+        evaluation_rubric=context.evaluation_rubric,
         original_filename=file.filename,
         stored_filename=stored_filename,
         file_path=file_path,
@@ -66,6 +88,20 @@ def list_presentations(
 
     presentations = db.execute(statement).scalars().all()
     return presentations
+
+
+@router.get("/{presentation_id}", response_model=PresentationResponse)
+def get_presentation(
+    presentation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    presentation = db.get(Presentation, presentation_id)
+
+    if not presentation or presentation.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Presentation not found")
+
+    return presentation
 
 
 @router.post("/{presentation_id}/extract")

@@ -1,11 +1,15 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PresentationResponse(BaseModel):
     id: int
     user_id: int | None
+    case_prompt: str
+    domain_type: str
+    evaluation_rubric: dict
+
     original_filename: str
     stored_filename: str
     file_path: str
@@ -19,4 +23,4 @@ class PresentationResponse(BaseModel):
 
 
 class PresentationListResponse(BaseModel):
-    presentations: list[PresentationResponse]
+    presentations: list[PresentationResponse] = Field(default_factory=list)

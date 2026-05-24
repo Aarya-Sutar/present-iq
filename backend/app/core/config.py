@@ -23,8 +23,12 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:3000"]
     )
 
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3:8b"
+
     # File Uploads
     uploads_dir: str = "uploads"
+    reports_dir: str = "reports"
     max_upload_size_mb: int = 50
 
     model_config = SettingsConfigDict(
