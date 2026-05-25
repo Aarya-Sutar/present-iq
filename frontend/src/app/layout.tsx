@@ -4,7 +4,7 @@ import SiteNav from "@/components/site-nav";
 import { PopupProvider } from "@/components/popup";
 
 export const metadata: Metadata = {
-  title: "PresentIQ",
+  title: "DeckLens",
   description: "AI-powered contextual presentation evaluation",
 };
 

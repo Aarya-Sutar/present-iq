@@ -28,7 +28,7 @@ export default function SiteNav() {
 
   const handleLogout = async () => {
     const confirmed = await confirm({
-      title: "Log out of PresentIQ?",
+      title: "Log out of DeckLens?",
       message:
         "You will be signed out of this session and returned to the login screen.",
       tone: "warning",
@@ -46,7 +46,7 @@ export default function SiteNav() {
     <header className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/" className="text-lg font-semibold tracking-tight text-white">
-          PresentIQ
+          DeckLens
         </Link>
 
         <div className="flex items-center gap-3">

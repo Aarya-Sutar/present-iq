@@ -279,7 +279,7 @@ export default function PresentationSlidesPage() {
 
       const a = document.createElement("a");
       a.href = url;
-      a.download = `PresentIQ_Report_${presentationId}.pdf`;
+      a.download = `DeckLens_Report_${presentationId}.pdf`;
 
       document.body.appendChild(a);
       a.click();

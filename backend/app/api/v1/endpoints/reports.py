@@ -90,6 +90,6 @@ def download_report(
 
     return FileResponse(
         path=report.report_file_path,
-        filename=report.report_filename or "PresentIQ_Report.pdf",
+        filename=report.report_filename or "DeckLens_Report.pdf",
         media_type="application/pdf",
     )

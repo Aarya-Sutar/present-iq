@@ -79,7 +79,7 @@ def generate_presentation_report(db: Session, presentation: Presentation) -> Rep
     report_dir = Path(settings.reports_dir) / str(presentation.id)
     report_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"PresentIQ_Report_{presentation.id}_{uuid4().hex[:8]}.pdf"
+    filename = f"DeckLens_Report_{presentation.id}_{uuid4().hex[:8]}.pdf"
     output_path = report_dir / filename
 
     presentation_payload = {

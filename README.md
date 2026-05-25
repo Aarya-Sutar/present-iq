@@ -1,6 +1,6 @@
-# PresentIQ
+# DeckLens
 
-PresentIQ is an AI-powered contextual presentation evaluation platform. It ingests PPT, PPTX, and PDF decks, extracts slide content, applies OCR when needed, classifies slides and frameworks, runs reasoning-aware analysis, and generates a downloadable PDF report. The product is designed for case decks, startup pitches, consulting-style presentations, and evaluation workflows where the prompt matters more than generic slide quality.
+DeckLens is an AI-powered contextual presentation evaluation platform. It ingests PPT, PPTX, and PDF decks, extracts slide content, applies OCR when needed, classifies slides and frameworks, runs reasoning-aware analysis, and generates a downloadable PDF report. The product is designed for case decks, startup pitches, consulting-style presentations, and evaluation workflows where the prompt matters more than generic slide quality.
 
 ## Features
 
@@ -19,7 +19,7 @@ PresentIQ is an AI-powered contextual presentation evaluation platform. It inges
 
 ## Architecture
 
-PresentIQ is split into a Next.js frontend, a FastAPI backend, a PostgreSQL database, a Redis-backed Celery queue, and a local AI/runtime layer for OCR, embeddings, framework matching, and report generation.
+DeckLens is split into a Next.js frontend, a FastAPI backend, a PostgreSQL database, a Redis-backed Celery queue, and a local AI/runtime layer for OCR, embeddings, framework matching, and report generation.
 
 ```mermaid
 flowchart LR
@@ -375,7 +375,7 @@ The database is migrated with Alembic. Migrations live under `backend/alembic/ve
 
 ## Deployment
 
-PresentIQ is straightforward to run locally, but production deployment needs more than a single web container.
+DeckLens is straightforward to run locally, but production deployment needs more than a single web container.
 
 | Requirement | Why it matters |
 | --- | --- |
@@ -398,21 +398,3 @@ Operational notes:
 ## Screenshots
 
 ![Home](docs/screenshots/home.png)
-![Dashboard](docs/screenshots/dashboard.png)
-![Presentation analysis](docs/screenshots/analysis.png)
-![PDF report preview](docs/screenshots/report.png)
-
-## Local Development Checklist
-
-- Start PostgreSQL.
-- Start Redis.
-- Create `backend/.env`.
-- Run Alembic migrations.
-- Start the FastAPI backend.
-- Start the Celery worker.
-- Start Ollama with the configured model.
-- Start the Next.js frontend.
-
-## License
-
-No license file is currently included in the repository.

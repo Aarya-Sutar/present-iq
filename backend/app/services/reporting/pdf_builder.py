@@ -50,7 +50,7 @@ def _page_footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 9)
     canvas.setFillColor(colors.grey)
-    canvas.drawString(40, 20, "PresentIQ - Contextual Evaluation Report")
+    canvas.drawString(40, 20, "DeckLens - Contextual Evaluation Report")
     page_width = canvas._pagesize[0]
     canvas.drawRightString(page_width - 40, 20, f"Page {doc.page}")
     canvas.restoreState()
@@ -134,8 +134,8 @@ def build_report_pdf(
         leftMargin=30,
         topMargin=42,
         bottomMargin=36,
-        title="PresentIQ Analysis Report",
-        author="PresentIQ",
+        title="DeckLens Analysis Report",
+        author="DeckLens",
     )
 
     story: list[Any] = []
@@ -153,7 +153,7 @@ def build_report_pdf(
         reasoning_context,
     )
 
-    story.append(Paragraph("PresentIQ", styles["CenterTitle"]))
+    story.append(Paragraph("DeckLens", styles["CenterTitle"]))
     story.append(Paragraph("Contextual Presentation Evaluation Report", styles["Heading2"]))
     story.append(Spacer(1, 0.15 * inch))
 
