@@ -1,10 +1,14 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import api from "@/lib/api";
+import { usePopup } from "@/components/popup";
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const { notify } = usePopup();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,10 +21,21 @@ export default function RegisterPage() {
         password,
       });
 
-      alert("Registration successful");
+      await notify({
+        title: "Registration successful",
+        message: "Your account is ready. You can log in now.",
+        tone: "success",
+        confirmLabel: "Go to login",
+      });
+      router.push("/login");
     } catch (error) {
       console.error(error);
-      alert("Registration failed");
+      await notify({
+        title: "Registration failed",
+        message: "Please check the form values and try again.",
+        tone: "danger",
+        confirmLabel: "Try again",
+      });
     }
   };
 

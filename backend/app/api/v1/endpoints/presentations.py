@@ -1,9 +1,10 @@
 import json
-
+import os
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
+from app.models.analysis import Analysis
+from app.models.report import Report
 from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.presentation import Presentation
@@ -19,6 +20,35 @@ from app.services.storage import build_storage_filename, save_file_bytes
 
 router = APIRouter(prefix="/presentations", tags=["Presentations"])
 
+def _serialize_presentation(db: Session, presentation: Presentation) -> dict:
+    analysis = (
+        db.query(Analysis)
+        .filter(Analysis.presentation_id == presentation.id)
+        .one_or_none()
+    )
+    report = (
+        db.query(Report)
+        .filter(Report.presentation_id == presentation.id)
+        .one_or_none()
+    )
+
+    return {
+        "id": presentation.id,
+        "user_id": presentation.user_id,
+        "case_prompt": presentation.case_prompt,
+        "domain_type": presentation.domain_type,
+        "evaluation_rubric": presentation.evaluation_rubric,
+        "original_filename": presentation.original_filename,
+        "stored_filename": presentation.stored_filename,
+        "file_path": presentation.file_path,
+        "file_type": presentation.file_type,
+        "file_size_bytes": presentation.file_size_bytes,
+        "processing_status": presentation.processing_status,
+        "analysis_status": analysis.analysis_status if analysis else None,
+        "report_status": report.report_status if report else None,
+        "created_at": presentation.created_at,
+        "updated_at": presentation.updated_at,
+    }
 
 @router.post(
     "/upload",
@@ -87,7 +117,7 @@ def list_presentations(
     )
 
     presentations = db.execute(statement).scalars().all()
-    return presentations
+    return [_serialize_presentation(db, p) for p in presentations]
 
 
 @router.get("/{presentation_id}", response_model=PresentationResponse)
@@ -101,8 +131,58 @@ def get_presentation(
     if not presentation or presentation.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Presentation not found")
 
-    return presentation
+    return _serialize_presentation(db, presentation)
 
+@router.delete("/{presentation_id}")
+def delete_presentation(
+    presentation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    presentation = db.get(Presentation, presentation_id)
+
+    if not presentation:
+        raise HTTPException(
+            status_code=404,
+            detail="Presentation not found",
+        )
+
+    if presentation.user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized",
+        )
+
+    report = (
+        db.query(Report)
+        .filter(Report.presentation_id == presentation.id)
+        .one_or_none()
+    )
+
+    if report and report.report_status:
+        if os.path.exists(report.report_status):
+            os.remove(report.report_status)
+
+    if os.path.exists(presentation.file_path):
+        os.remove(presentation.file_path)
+
+    db.query(Slide).filter(
+        Slide.presentation_id == presentation.id
+    ).delete()
+
+    db.query(Analysis).filter(
+        Analysis.presentation_id == presentation.id
+    ).delete()
+
+    db.query(Report).filter(
+        Report.presentation_id == presentation.id
+    ).delete()
+
+    db.delete(presentation)
+
+    db.commit()
+
+    return {"message": "Presentation deleted"}
 
 @router.post("/{presentation_id}/extract")
 def extract_presentation(

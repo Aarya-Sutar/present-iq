@@ -1,11 +1,15 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import api from "@/lib/api";
+import { usePopup } from "@/components/popup";
 import { useAuthStore } from "@/store/useAuthStore";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { notify } = usePopup();
   const setToken = useAuthStore((state) => state.setToken);
 
   const [email, setEmail] = useState("");
@@ -20,10 +24,21 @@ export default function LoginPage() {
 
       setToken(response.data.access_token);
 
-      alert("Login successful");
+      await notify({
+        title: "Login successful",
+        message: "You are now signed in and ready to continue.",
+        tone: "success",
+        confirmLabel: "Continue",
+      });
+      router.push("/dashboard");
     } catch (error) {
       console.error(error);
-      alert("Login failed");
+      await notify({
+        title: "Login failed",
+        message: "Check your email and password, then try again.",
+        tone: "danger",
+        confirmLabel: "Try again",
+      });
     }
   };
 

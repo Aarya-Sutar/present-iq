@@ -16,7 +16,13 @@ class AnalysisResponse(BaseModel):
     framework_utilization_score: float | None
     overall_presentation_quality_score: float | None
 
+    prompt_alignment_score: float | None
+    evidence_grounding_score: float | None
+
     score_breakdown: dict
+    slide_insights: list[dict] = Field(default_factory=list)
+    unsupported_claims: list[str] = Field(default_factory=list)
+    reasoning_gaps: list[str] = Field(default_factory=list)
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
     missing_elements: list[str] = Field(default_factory=list)

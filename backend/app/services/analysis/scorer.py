@@ -3,19 +3,10 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, asdict
 import re
+from typing import Any
 
 from app.models.slide import Slide
 from app.services.analysis.contextual import EvaluationContext, build_evaluation_context
-
-
-CORE_SIGNALS = [
-    "problem statement",
-    "solution",
-    "strategy",
-    "roadmap",
-    "implementation",
-    "conclusion",
-]
 
 
 def clamp(score: float) -> float:
@@ -78,6 +69,10 @@ def build_presentation_summary(
         "slide_count": slide_count,
         "domain_type": context.domain_type,
         "case_prompt": context.case_prompt,
+        "prompt_brief": context.prompt_brief,
+        "problem_statement": context.problem_statement,
+        "expected_focus_areas": context.expected_focus_areas,
+        "evaluation_criteria": context.evaluation_criteria,
         "rubric_topics": context.rubric_topics,
         "categories_present": list(categories.keys()),
         "frameworks_present": list(frameworks.keys()),
@@ -97,6 +92,7 @@ class Scorecard:
     communication_clarity_score: float
     framework_utilization_score: float
     overall_presentation_quality_score: float
+    prompt_alignment_score: float
     score_breakdown: dict
     strengths: list[str]
     weaknesses: list[str]
@@ -118,6 +114,7 @@ def compute_scores(
     case_prompt: str = "",
     domain_type: str = "general",
     evaluation_rubric: dict | None = None,
+    reasoning_audit: Any | None = None,
 ) -> Scorecard:
     context = build_evaluation_context(
         case_prompt=case_prompt,
@@ -156,20 +153,20 @@ def compute_scores(
     has_numbers = contains_any(joined_text, ["%", "$", "rs", "lakh", "crore", "kpi", "metric", "timeline"])
     has_comparison = contains_any(joined_text, ["vs", "competitor", "alternative", "benchmark", "compare"])
 
-    # Business logic score
     business_logic = 20.0
     business_logic += prompt_alignment * 45.0
     business_logic += 10.0 if "Problem Statement" in present_categories else -4.0
     business_logic += 8.0 if has_solution_language else -2.0
     business_logic += 8.0 if "Roadmap" in present_categories else -2.0
     business_logic += 6.0 if "Conclusion" in present_categories else -2.0
+
     if context.domain_type in {"startup", "finance"}:
         business_logic += 5.0 if "Financials" in present_categories else -5.0
     if context.domain_type in {"operations", "strategy"}:
         business_logic += 5.0 if "Operations" in present_categories or "Strategy" in present_categories else -5.0
+
     business_logic = clamp(business_logic)
 
-    # Strategy strength
     strategy = 18.0
     strategy += framework_alignment * 40.0
     strategy += 10.0 if "Strategy" in present_categories else -2.0
@@ -177,16 +174,14 @@ def compute_scores(
     strategy += 6.0 if has_comparison else 0.0
     strategy = clamp(strategy)
 
-    # Analytical depth
     analytical_depth = 15.0
-    analytical_depth += len(present_categories) * 4.0
-    analytical_depth += len(present_frameworks) * 4.0
+    analytical_depth += len(present_categories) * 3.0
+    analytical_depth += len(present_frameworks) * 3.0
     analytical_depth += 5.0 if has_numbers else 0.0
     analytical_depth += 5.0 if has_comparison else 0.0
     analytical_depth += min(10.0, len(context.rubric_topics) * 2.0)
     analytical_depth = clamp(analytical_depth)
 
-    # Financial soundness
     financial = 12.0
     financial_terms = [
         "revenue",
@@ -213,7 +208,6 @@ def compute_scores(
 
     financial = clamp(financial)
 
-    # Communication clarity
     slide_count = summary["slide_count"]
     avg_words = summary["avg_words_per_slide"]
     title_ratio = summary["title_ratio"]
@@ -243,21 +237,58 @@ def compute_scores(
 
     clarity = clamp(clarity)
 
-    # Framework utilization
     framework_util = 15.0 + framework_alignment * 55.0
     framework_util += 5.0 if present_frameworks.intersection({"Business Model Canvas", "Go-To-Market Strategy"}) else 0.0
     framework_util += 5.0 if present_frameworks.intersection({"STP Framework", "4Ps Marketing"}) else 0.0
     framework_util += 5.0 if present_frameworks.intersection({"Value Chain Analysis", "KPI Dashboard"}) else 0.0
     framework_util = clamp(framework_util)
 
-    overall = clamp(
-        (business_logic * 0.28)
-        + (strategy * 0.20)
-        + (analytical_depth * 0.16)
-        + (financial * 0.16)
+    prompt_alignment_score = round(prompt_alignment * 100.0, 1)
+
+    evidence_grounding_score = 0.0
+    unsupported_count = 0
+    reasoning_gap_count = 0
+    if reasoning_audit is not None:
+        evidence_grounding_score = float(getattr(reasoning_audit, "evidence_grounding_score", 0.0) or 0.0)
+        unsupported_count = len(getattr(reasoning_audit, "unsupported_claims", []) or [])
+        reasoning_gap_count = len(getattr(reasoning_audit, "reasoning_gaps", []) or [])
+
+    overall_base = (
+        (business_logic * 0.15)
+        + (strategy * 0.14)
+        + (analytical_depth * 0.13)
+        + (financial * 0.10)
         + (clarity * 0.10)
         + (framework_util * 0.10)
+        + (prompt_alignment_score * 0.14)
+        + (evidence_grounding_score * 0.14)
     )
+
+    reasoning_penalty = (
+        (unsupported_count * 2.5)
+        + (reasoning_gap_count * 1.2)
+        + max(0.0, 70.0 - prompt_alignment_score) * 0.12
+        + max(0.0, 70.0 - evidence_grounding_score) * 0.10
+    )
+    overall = clamp(overall_base - reasoning_penalty)
+    if prompt_alignment_score < 55:
+        overall = min(overall, 74.0)
+
+    if evidence_grounding_score < 55:
+        overall = min(overall, 72.0)
+
+    if len(present_frameworks) >= 5 and framework_util < 70:
+        overall -= 3.0
+
+    if slide_count >= 10 and avg_words > 120:
+        overall -= 2.5
+
+    overall = clamp(overall)
+
+    if prompt_alignment_score < 60:
+        overall = min(overall, 78.0)
+    if evidence_grounding_score < 60:
+        overall = min(overall, 76.0)
 
     missing_elements = []
     for required in context.expected_categories:
@@ -312,12 +343,17 @@ def compute_scores(
         investor_questions.append("Why is this better than the current alternative?")
 
     score_breakdown = {
-        "prompt_alignment_score": round(prompt_alignment * 100.0, 1),
-        "framework_alignment_score": round(framework_alignment * 100.0, 1),
         "domain_type": context.domain_type,
-        "expected_categories": context.expected_categories,
-        "expected_frameworks": context.expected_frameworks,
+        "prompt_brief": context.prompt_brief,
+        "problem_statement": context.problem_statement,
+        "expected_focus_areas": context.expected_focus_areas,
+        "evaluation_criteria": context.evaluation_criteria,
         "rubric_topics": context.rubric_topics,
+        "categories_present": list(categories.keys()),
+        "frameworks_present": list(frameworks.keys()),
+        "prompt_alignment_score": prompt_alignment_score,
+        "evidence_grounding_score": round(evidence_grounding_score, 1),
+        "reasoning_penalty": round(reasoning_penalty, 1),
         "business_logic_score": business_logic,
         "strategy_strength_score": strategy,
         "analytical_depth_score": analytical_depth,
@@ -335,6 +371,7 @@ def compute_scores(
         communication_clarity_score=clarity,
         framework_utilization_score=framework_util,
         overall_presentation_quality_score=overall,
+        prompt_alignment_score=prompt_alignment_score,
         score_breakdown=score_breakdown,
         strengths=strengths,
         weaknesses=weaknesses,

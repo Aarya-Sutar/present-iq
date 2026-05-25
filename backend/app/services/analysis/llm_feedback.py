@@ -13,7 +13,7 @@ settings = get_settings()
 SYSTEM_PROMPT = """
 You are a blunt senior evaluator for an E-Cell induction or consulting-style case review.
 
-Judge the presentation against the provided case prompt and rubric, not as a generic deck.
+Judge the presentation against the provided case brief and rubric, not as a generic deck.
 Return STRICT JSON only. No markdown. No prose outside JSON.
 
 The JSON must contain:
@@ -27,13 +27,21 @@ The JSON must contain:
   "investor_questions": ["string"]
 }
 
-Be specific. Be practical. Be direct. Mention mismatch with the case prompt if the deck drifts away from the task.
+Rules:
+- Do not repeat the case brief verbatim.
+- Do not copy slide text.
+- Focus on reasoning gaps, prompt drift, unsupported claims, and decision quality.
+- Keep each bullet short and specific.
 """
 
 
 def build_user_prompt(context: dict, scorecard: dict, presentation_summary: dict, slides_overview: list[dict]) -> str:
     payload = {
-        "context": context,
+        "case_brief": context.get("prompt_brief", ""),
+        "problem_statement": context.get("problem_statement", ""),
+        "expected_focus_areas": context.get("expected_focus_areas", []),
+        "evaluation_criteria": context.get("evaluation_criteria", []),
+        "reasoning_audit": context.get("reasoning_audit", {}),
         "scorecard": scorecard,
         "presentation_summary": presentation_summary,
         "slides_overview": slides_overview,
@@ -48,17 +56,19 @@ def build_fallback_feedback(context: dict, scorecard: dict, presentation_summary
     recommendations = list(scorecard.get("recommendations", []))
     investor_questions = list(scorecard.get("investor_questions", []))
 
-    case_prompt = context.get("case_prompt", "").strip()
+    case_brief = context.get("prompt_brief", "").strip()
     domain_type = context.get("domain_type", "general")
+    reasoning_audit = context.get("reasoning_audit", {})
 
     executive_summary = (
-        f"This deck was reviewed against the case prompt for the {domain_type} domain. "
+        f"This deck was reviewed against the case brief for the {domain_type} domain. "
         f"Overall score: {scorecard.get('overall_presentation_quality_score', 0)}."
     )
 
     consultant_feedback = (
-        f"The deck is structurally usable, but it does not yet feel fully case-ready for this prompt: {case_prompt or 'N/A'}. "
-        "The main issue is whether the story actually solves the assigned problem, not whether it merely looks like a business deck."
+        f"The deck is structurally usable, but it does not yet feel fully case-ready for this prompt: {case_brief or 'N/A'}. "
+        "The main issue is whether the story actually solves the assigned problem, not whether it merely looks like a business deck. "
+        f"Evidence grounding score: {reasoning_audit.get('evidence_grounding_score', 'N/A')}."
     )
 
     if not strengths:

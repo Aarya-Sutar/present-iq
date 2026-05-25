@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from reportlab.lib import colors
@@ -9,7 +10,6 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
-    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -18,6 +18,19 @@ from reportlab.platypus import (
 )
 
 from app.core.config import get_settings
+from app.services.analysis.contextual import build_evaluation_context
+from app.services.analysis.reasoner import build_reasoning_audit
+
+def truncate_text(text: str, max_length: int = 100) -> str:
+    if not text:
+        return ""
+
+    text = text.strip().replace("\n", " ")
+
+    if len(text) <= max_length:
+        return text
+
+    return text[:max_length] + "..."
 
 settings = get_settings()
 
@@ -33,23 +46,13 @@ def sanitize_pdf_text(text: str | None) -> str:
     return text
 
 
-def truncate(text: str | None, limit: int = 180) -> str:
-    cleaned = sanitize_pdf_text(text)
-    if len(cleaned) <= limit:
-        return cleaned
-    return cleaned[: limit - 3] + "..."
-
-
 def _page_footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 9)
     canvas.setFillColor(colors.grey)
     canvas.drawString(40, 20, "PresentIQ - Contextual Evaluation Report")
-    canvas.drawRightString(
-        A4[0] - 40,
-        20,
-        f"Page {doc.page}",
-    )
+    page_width = canvas._pagesize[0]
+    canvas.drawRightString(page_width - 40, 20, f"Page {doc.page}")
     canvas.restoreState()
 
 
@@ -59,6 +62,16 @@ def _score_row(label: str, value: Any) -> list[str]:
     else:
         display = f"{round(float(value))}"
     return [label, display]
+
+
+def _as_reasoning_slide(slide: dict) -> SimpleNamespace:
+    return SimpleNamespace(
+        slide_number=slide.get("slide_number", 0),
+        slide_title=slide.get("slide_title"),
+        extracted_text=slide.get("extracted_text", "") or "",
+        ocr_text=slide.get("ocr_text", "") or "",
+        slide_category=slide.get("slide_category"),
+    )
 
 
 def build_report_pdf(
@@ -117,8 +130,8 @@ def build_report_pdf(
     doc = SimpleDocTemplate(
         str(output),
         pagesize=A4,
-        rightMargin=36,
-        leftMargin=36,
+        rightMargin=30,
+        leftMargin=30,
         topMargin=42,
         bottomMargin=36,
         title="PresentIQ Analysis Report",
@@ -130,6 +143,15 @@ def build_report_pdf(
     case_prompt = sanitize_pdf_text(presentation.get("case_prompt", ""))
     domain_type = sanitize_pdf_text(presentation.get("domain_type", "general"))
     file_name = sanitize_pdf_text(presentation.get("original_filename", ""))
+    reasoning_context = build_evaluation_context(
+        case_prompt=presentation.get("case_prompt", ""),
+        explicit_domain_type=presentation.get("domain_type"),
+        raw_rubric=presentation.get("evaluation_rubric"),
+    )
+    reasoning_audit = build_reasoning_audit(
+        [_as_reasoning_slide(slide) for slide in slides],
+        reasoning_context,
+    )
 
     story.append(Paragraph("PresentIQ", styles["CenterTitle"]))
     story.append(Paragraph("Contextual Presentation Evaluation Report", styles["Heading2"]))
@@ -203,8 +225,7 @@ def build_report_pdf(
     story.append(Paragraph("Executive Summary", styles["SectionTitle"]))
     story.append(
         Paragraph(
-            sanitize_pdf_text(analysis.get("executive_summary"))
-            or "No executive summary available.",
+            sanitize_pdf_text(analysis.get("executive_summary")) or "No executive summary available.",
             styles["BodySmall"],
         )
     )
@@ -212,88 +233,23 @@ def build_report_pdf(
     story.append(Paragraph("Consultant Feedback", styles["SectionTitle"]))
     story.append(
         Paragraph(
-            sanitize_pdf_text(analysis.get("consultant_feedback"))
-            or "No consultant feedback available.",
+            sanitize_pdf_text(analysis.get("consultant_feedback")) or "No consultant feedback available.",
             styles["BodySmall"],
         )
     )
 
-    story.append(Spacer(1, 0.1 * inch))
+    story.append(Paragraph("Reasoning Audit", styles["SectionTitle"]))
 
-    def build_bullet_list(title: str, items: list[str]):
+    def build_bullet_list(title: str, items: list[str], empty_message: str = "None"):
         story.append(Paragraph(title, styles["SectionTitle"]))
         if not items:
-            story.append(Paragraph("None", styles["BodySmall"]))
+            story.append(Paragraph(empty_message, styles["BodySmall"]))
             return
         for item in items:
             story.append(Paragraph(f"- {sanitize_pdf_text(item)}", styles["BodySmall"]))
 
-    build_bullet_list("Strengths", analysis.get("strengths", []))
-    build_bullet_list("Weaknesses", analysis.get("weaknesses", []))
-    build_bullet_list("Missing Elements", analysis.get("missing_elements", []))
-    build_bullet_list("Recommendations", analysis.get("recommendations", []))
-    build_bullet_list("Investor Questions", analysis.get("investor_questions", []))
-
-    story.append(PageBreak())
-
-    story.append(Paragraph("Slide-by-Slide Summary", styles["SectionTitle"]))
-    slide_table_data = [
-        [
-            "Slide",
-            "Title",
-            "Category",
-            "Framework",
-            "Summary",
-        ]
-    ]
-
-    for slide in slides:
-        framework = slide.get("primary_framework") or "None"
-        summary_bits = []
-        if slide.get("classification_reason"):
-            summary_bits.append(f"Category: {slide['classification_reason']}")
-        if slide.get("framework_reason"):
-            summary_bits.append(f"Framework: {slide['framework_reason']}")
-
-        slide_table_data.append(
-            [
-                str(slide.get("slide_number", "")),
-                sanitize_pdf_text(slide.get("slide_title") or "Untitled"),
-                sanitize_pdf_text(slide.get("slide_category") or "Unclassified"),
-                sanitize_pdf_text(framework),
-                sanitize_pdf_text(" | ".join(summary_bits))[:220],
-            ]
-        )
-
-    slide_table = Table(
-        slide_table_data,
-        colWidths=[0.5 * inch, 1.3 * inch, 1.25 * inch, 1.2 * inch, 2.6 * inch],
-        repeatRows=1,
-    )
-    slide_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("FONTSIZE", (0, 0), (-1, -1), 7.8),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-            ]
-        )
-    )
-    story.append(slide_table)
-
-    story.append(Spacer(1, 0.15 * inch))
-    story.append(Paragraph("Framework Summary", styles["SectionTitle"]))
-    framework_counts = analysis.get("score_breakdown", {}).get("frameworks_present", [])
-    if framework_counts:
-        for item in framework_counts:
-            story.append(Paragraph(f"- {sanitize_pdf_text(str(item))}", styles["BodySmall"]))
-    else:
-        story.append(Paragraph("No framework summary available.", styles["BodySmall"]))
+    build_bullet_list("Reasoning Gaps", reasoning_audit.reasoning_gaps)
+    build_bullet_list("Unsupported Claims", reasoning_audit.unsupported_claims)
 
     doc.build(story, onFirstPage=_page_footer, onLaterPages=_page_footer)
     return str(output)

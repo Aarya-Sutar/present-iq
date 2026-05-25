@@ -28,6 +28,44 @@ class FrameworkMatch:
     reference_text: str | None = None
 
 
+DOMAIN_FRAMEWORK_PRIORS: dict[str, dict[str, float]] = {
+    "startup": {
+        "Business Model Canvas": 0.08,
+        "Go-To-Market Strategy": 0.10,
+        "Financial Model": 0.08,
+        "Competitor Analysis": 0.06,
+        "SWOT Analysis": 0.05,
+        "Market Segmentation": 0.05,
+    },
+    "operations": {
+        "Value Chain Analysis": 0.10,
+        "KPI Dashboard": 0.10,
+        "Customer Journey Mapping": 0.08,
+        "SWOT Analysis": 0.05,
+    },
+    "marketing": {
+        "STP Framework": 0.10,
+        "4Ps Marketing": 0.10,
+        "Market Segmentation": 0.08,
+        "Customer Journey Mapping": 0.08,
+        "Competitor Analysis": 0.05,
+    },
+    "finance": {
+        "Financial Model": 0.12,
+        "KPI Dashboard": 0.08,
+        "Business Model Canvas": 0.06,
+    },
+    "strategy": {
+        "SWOT Analysis": 0.10,
+        "Porter's Five Forces": 0.08,
+        "PESTEL Analysis": 0.08,
+        "Competitor Analysis": 0.10,
+        "Value Chain Analysis": 0.05,
+    },
+    "general": {},
+}
+
+
 def normalize_for_matching(text: str) -> str:
     text = text.lower()
     text = re.sub(r"[^a-z0-9\s%$.-]", " ", text)
@@ -97,7 +135,7 @@ def _get_semantic_scores(slide_embedding: np.ndarray) -> dict[int, float]:
     if faiss is not None:
         index = get_reference_index()
         if index is not None:
-            top_k = min(10, len(rows))
+            top_k = min(25, len(rows))
             distances, indices = index.search(slide_embedding.reshape(1, -1), top_k)
             scores: dict[int, float] = {}
             for position, reference_index in enumerate(indices[0].tolist()):
@@ -113,8 +151,13 @@ def detect_frameworks(
     slide_text: str,
     slide_title: str | None = None,
     top_k: int = 3,
-    threshold: float = 0.18,
+    threshold: float = 0.24,
+    context_hint: dict | None = None,
 ) -> list[FrameworkMatch]:
+    context_hint = context_hint or {}
+    domain_type = str(context_hint.get("domain_type", "general")).lower()
+    expected_frameworks = set(context_hint.get("expected_frameworks", []))
+
     combined_text = " ".join(
         part for part in [slide_title or "", slide_title or "", slide_text or ""] if part.strip()
     )
@@ -146,7 +189,7 @@ def detect_frameworks(
 
     for framework in FRAMEWORKS:
         state = best_per_framework.get(
-            framework.name,
+            framework.framework if hasattr(framework, "framework") else framework.name,
             {"best_semantic": 0.0, "best_reference": None},
         )
 
@@ -154,66 +197,25 @@ def detect_frameworks(
         keyword_score, keyword_evidence = score_keywords(normalized_text, framework.keywords)
         title_score, title_evidence = score_keywords(normalized_title, framework.keywords)
 
-        name_boost = 0.2 if framework.name.lower() in normalized_title else 0.0
-        title_component = min(1.0, title_score + name_boost)
-        boost = 0.0
+        name_boost = 0.0
+        if framework.name.lower() in normalized_title:
+            name_boost += 0.14
 
-        if framework.name == "Financial Model":
-            if any(
-                term in normalized_text
-                for term in [
-                    "subscription",
-                    "pricing",
-                    "revenue",
-                    "funding",
-                    "monetization",
-                ]
-            ):
-                boost += 0.15
+        domain_prior = DOMAIN_FRAMEWORK_PRIORS.get(domain_type, {}).get(framework.name, 0.0)
+        expected_boost = 0.08 if framework.name in expected_frameworks else 0.0
 
-        if framework.name == "Competitor Analysis":
-            if any(
-                term in normalized_text
-                for term in [
-                    "linkedin",
-                    "instagram",
-                    "discord",
-                    "whatsapp",
-                    "competitor",
-                ]
-            ):
-                boost += 0.15
-
-        if framework.name == "Go-To-Market Strategy":
-            if any(
-                term in normalized_text
-                for term in [
-                    "marketing",
-                    "promotion",
-                    "ads",
-                    "youtubers",
-                    "creators",
-                ]
-            ):
-                boost += 0.12
         final_score = round(
-            (semantic_score * 0.55) +
-            (keyword_score * 0.25) +
-            (title_component * 0.15) +
-            (boost*0.05),
+            (semantic_score * 0.60)
+            + (keyword_score * 0.22)
+            + (title_score * 0.10)
+            + name_boost
+            + domain_prior
+            + expected_boost,
             4,
         )
-        print(
-            framework.name,
-            {
-                "semantic": semantic_score,
-                "keyword": keyword_score,
-                "title": title_component,
-                "boost": boost,
-                "final": final_score,
-            },
-        )
-        if final_score < threshold:
+
+        effective_threshold = threshold - 0.04 if framework.name in expected_frameworks else threshold + 0.01
+        if final_score < effective_threshold:
             continue
 
         evidence: list[str] = []
@@ -224,7 +226,7 @@ def detect_frameworks(
         if state["best_reference"]:
             evidence.append(f"semantic: {str(state['best_reference'])[:120]}")
 
-        if semantic_score > 0 and (keyword_score > 0 or title_component > 0):
+        if semantic_score > 0 and (keyword_score > 0 or title_score > 0):
             method = "hybrid"
         elif semantic_score > 0:
             method = "semantic"
@@ -237,7 +239,7 @@ def detect_frameworks(
                 score=final_score,
                 semantic_score=round(semantic_score, 4),
                 keyword_score=round(keyword_score, 4),
-                title_score=round(title_component, 4),
+                title_score=round(title_score, 4),
                 method=method,
                 evidence=evidence,
                 reference_text=str(state["best_reference"]) if state["best_reference"] else None,
@@ -245,14 +247,6 @@ def detect_frameworks(
         )
 
     matches.sort(key=lambda item: item.score, reverse=True)
-    matches = [
-        match
-        for match in matches
-        if (
-            match.semantic_score > 0.20
-            or match.keyword_score > 0.20
-        )
-    ]
     return matches[:top_k]
 
 

@@ -16,6 +16,10 @@ class PresentationResponse(BaseModel):
     file_type: str
     file_size_bytes: int | None
     processing_status: str
+
+    analysis_status: str | None = None
+    report_status: str | None = None
+
     created_at: datetime
     updated_at: datetime
 

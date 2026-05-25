@@ -3,6 +3,7 @@ import { create } from "zustand";
 type AuthState = {
   token: string | null;
   setToken: (token: string | null) => void;
+  hydrateToken: () => void;
   logout: () => void;
 };
 
@@ -15,6 +16,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     } else {
       localStorage.removeItem("token");
     }
+
+    set({ token });
+  },
+
+  hydrateToken: () => {
+    if (typeof window === "undefined") return;
+
+    const token = localStorage.getItem("token");
 
     set({ token });
   },
